@@ -1,47 +1,64 @@
 import { useParams, Link } from "react-router-dom";
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Download, AlertTriangle, Check, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CountdownTimer from "@/components/CountdownTimer";
-import { getDropByCode, getFileBlob, isExpired, formatFileSize, getFileTypeIcon, formatDropTime } from "@/lib/storage";
+import { getDropByCode, getFileDownloadUrl, isExpired, formatFileSize, getFileTypeIcon, formatDropTime, type DroppedFile } from "@/lib/storage";
 
 export default function Receive() {
   const { code } = useParams<{ code: string }>();
+  const [drop, setDrop] = useState<DroppedFile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [expired, setExpired] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
 
-  const drop = code ? getDropByCode(code) : undefined;
-  const alreadyExpired = drop ? isExpired(drop) : false;
+  useEffect(() => {
+    if (!code) return;
+    getDropByCode(code).then(d => {
+      setDrop(d);
+      if (d) setExpired(isExpired(d));
+      setLoading(false);
+    });
+  }, [code]);
 
   const handleDownload = useCallback(async () => {
-    if (!drop || !code) return;
+    if (!drop) return;
     setDownloading(true);
     setDownloadError(false);
 
     try {
-      const blob = getFileBlob(code);
-      if (!blob) throw new Error("File not found");
-
-      await new Promise((r) => setTimeout(r, 1000));
-
-      const url = URL.createObjectURL(blob);
+      const url = getFileDownloadUrl(drop.storagePath);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Download failed");
+      
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = blobUrl;
       a.download = drop.name;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
       setDownloaded(true);
     } catch {
       setDownloadError(true);
     } finally {
       setDownloading(false);
     }
-  }, [drop, code]);
+  }, [drop]);
+
+  if (loading) {
+    return (
+      <div className="container max-w-lg py-20 text-center">
+        <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
+        <p className="mt-4 text-muted-foreground">Loading drop...</p>
+      </div>
+    );
+  }
 
   if (!drop) {
     return (
@@ -56,7 +73,7 @@ export default function Receive() {
     );
   }
 
-  const isExp = expired || alreadyExpired;
+  const isExp = expired;
 
   return (
     <div className="container max-w-lg py-12">

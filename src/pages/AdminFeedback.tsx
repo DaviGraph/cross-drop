@@ -1,9 +1,26 @@
-import { getAllFeedback } from "@/lib/storage";
-import { Star } from "lucide-react";
+import { useState, useEffect } from "react";
+import { getAllFeedback, type FeedbackEntry } from "@/lib/storage";
+import { Star, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function AdminFeedback() {
-  const feedback = getAllFeedback();
+  const [feedback, setFeedback] = useState<FeedbackEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getAllFeedback().then(f => {
+      setFeedback(f);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="container max-w-lg py-20 text-center">
+        <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="container max-w-2xl py-12">

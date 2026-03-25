@@ -9,17 +9,20 @@ export default function Feedback() {
   const [hover, setHover] = useState(0);
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (rating === 0) return;
-    saveFeedback({
-      id: crypto.randomUUID(),
-      rating,
-      message,
-      createdAt: new Date().toISOString(),
-    });
-    setSubmitted(true);
+    setSubmitting(true);
+    try {
+      await saveFeedback(rating, message);
+      setSubmitted(true);
+    } catch {
+      // silently fail
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) {
@@ -78,8 +81,8 @@ export default function Feedback() {
             className="w-full rounded-xl border border-input bg-card p-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
           />
 
-          <Button type="submit" size="lg" className="w-full" disabled={rating === 0}>
-            Submit Feedback
+          <Button type="submit" size="lg" className="w-full" disabled={rating === 0 || submitting}>
+            {submitting ? "Submitting..." : "Submit Feedback"}
           </Button>
         </form>
       </motion.div>

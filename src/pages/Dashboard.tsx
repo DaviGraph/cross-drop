@@ -1,20 +1,36 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Droplet, Copy, Check, ExternalLink } from "lucide-react";
+import { Droplet, Copy, Check, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getDroppedFiles, isExpired, formatFileSize, getFileTypeIcon, formatDropTime } from "@/lib/storage";
-import { useState } from "react";
+import { getRecentDrops, isExpired, formatFileSize, getFileTypeIcon, formatDropTime, type DroppedFile } from "@/lib/storage";
+import { useState, useEffect } from "react";
 import TooltipHint from "@/components/TooltipHint";
 
 export default function Dashboard() {
-  const drops = getDroppedFiles();
+  const [drops, setDrops] = useState<DroppedFile[]>([]);
+  const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getRecentDrops().then(d => {
+      setDrops(d);
+      setLoading(false);
+    });
+  }, []);
 
   const copyLink = (code: string) => {
     navigator.clipboard.writeText(`${window.location.origin}/receive/${code}`);
     setCopiedId(code);
     setTimeout(() => setCopiedId(null), 2000);
   };
+
+  if (loading) {
+    return (
+      <div className="container max-w-lg py-20 text-center">
+        <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+      </div>
+    );
+  }
 
   if (drops.length === 0) {
     return (

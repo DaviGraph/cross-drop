@@ -4,7 +4,7 @@ import { Upload, Check, Copy, AlertTriangle } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import {
-  generateCode, saveDroppedFile, formatFileSize, getFileTypeIcon, formatDropTime,
+  uploadAndSaveDrop, formatFileSize, getFileTypeIcon, formatDropTime,
   type DroppedFile,
 } from "@/lib/storage";
 import TooltipHint from "@/components/TooltipHint";
@@ -21,11 +21,11 @@ export default function Send() {
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    let totalSize = 0;
-    for (let i = 0; i < files.length; i++) totalSize += files[i].size;
+    // For now, upload first file (multi-file could be zipped later)
+    const file = files[0];
 
-    if (totalSize > MAX_SIZE) {
-      setError(`Total size exceeds 200MB limit (${formatFileSize(totalSize)})`);
+    if (file.size > MAX_SIZE) {
+      setError(`File exceeds 200MB limit (${formatFileSize(file.size)})`);
       return;
     }
 
@@ -33,46 +33,25 @@ export default function Send() {
     setUploading(true);
     setProgress(0);
 
-    // Simulate upload progress
+    // Simulate progress while uploading
     const interval = setInterval(() => {
       setProgress((p) => {
-        if (p >= 95) { clearInterval(interval); return 95; }
-        return p + Math.random() * 15;
+        if (p >= 90) { clearInterval(interval); return 90; }
+        return p + Math.random() * 12;
       });
-    }, 200);
+    }, 300);
 
-    // Create blob from files
-    const blob = files.length === 1
-      ? files[0]
-      : new Blob(Array.from(files));
-
-    const fileName = files.length === 1
-      ? files[0].name
-      : `${files.length} files`;
-
-    const fileType = files.length === 1
-      ? files[0].type
-      : "application/zip";
-
-    await new Promise((r) => setTimeout(r, 1500));
-    clearInterval(interval);
-    setProgress(100);
-
-    const code = generateCode();
-    const now = new Date();
-    const dropped: DroppedFile = {
-      id: crypto.randomUUID(),
-      name: fileName,
-      size: totalSize,
-      type: fileType,
-      code,
-      droppedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
-    };
-
-    saveDroppedFile(dropped, blob);
-    setResult(dropped);
-    setUploading(false);
+    try {
+      const dropped = await uploadAndSaveDrop(file);
+      clearInterval(interval);
+      setProgress(100);
+      setResult(dropped);
+    } catch (err: any) {
+      clearInterval(interval);
+      setError(err.message || "Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
   }, []);
 
   const shareUrl = result
@@ -111,7 +90,6 @@ export default function Send() {
               >
                 <input
                   type="file"
-                  multiple
                   className="hidden"
                   onChange={(e) => handleFiles(e.target.files)}
                   disabled={uploading}
@@ -119,7 +97,7 @@ export default function Send() {
                 <Upload className="h-10 w-10 text-muted-foreground" />
                 <div className="text-center">
                   <p className="font-medium">
-                    {uploading ? "Uploading..." : "Tap to select files"}
+                    {uploading ? "Uploading..." : "Tap to select a file"}
                   </p>
                   <p className="text-sm text-muted-foreground mt-1">
                     Photos, videos, documents — up to 200MB
