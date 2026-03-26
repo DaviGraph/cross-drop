@@ -65,7 +65,7 @@ export default function Receive() {
       const contentLength = Number(response.headers.get('content-length')) || drop.size;
 
       if (reader) {
-        const chunks: Uint8Array[] = [];
+        const chunks: BlobPart[] = [];
         let received = 0;
 
         while (true) {
