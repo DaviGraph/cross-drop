@@ -18,35 +18,56 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          delete_after_download: boolean
+          downloaded: boolean
+          downloaded_at: string | null
           dropped_at: string
           expires_at: string
+          expires_minutes: number
           file_name: string
           file_size: number
           file_type: string
           id: string
+          is_public: boolean
           storage_path: string
+          user_id: string | null
+          view_count: number
         }
         Insert: {
           code: string
           created_at?: string
+          delete_after_download?: boolean
+          downloaded?: boolean
+          downloaded_at?: string | null
           dropped_at?: string
           expires_at?: string
+          expires_minutes?: number
           file_name: string
           file_size: number
           file_type: string
           id?: string
+          is_public?: boolean
           storage_path: string
+          user_id?: string | null
+          view_count?: number
         }
         Update: {
           code?: string
           created_at?: string
+          delete_after_download?: boolean
+          downloaded?: boolean
+          downloaded_at?: string | null
           dropped_at?: string
           expires_at?: string
+          expires_minutes?: number
           file_name?: string
           file_size?: number
           file_type?: string
           id?: string
+          is_public?: boolean
           storage_path?: string
+          user_id?: string | null
+          view_count?: number
         }
         Relationships: []
       }

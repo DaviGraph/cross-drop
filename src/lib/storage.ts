@@ -9,6 +9,9 @@ export interface DroppedFile {
   droppedAt: string;
   expiresAt: string;
   storagePath: string;
+  deleteAfterDownload: boolean;
+  downloaded: boolean;
+  viewCount: number;
 }
 
 export interface FeedbackEntry {
@@ -20,37 +23,22 @@ export interface FeedbackEntry {
 
 const ONBOARDING_KEY = 'crossdrop_onboarded';
 const TOOLTIP_KEY = 'crossdrop_tooltips_seen';
+const USER_ID_KEY = 'crossdrop_user_id';
+
+export function getOrCreateUserId(): string {
+  let id = localStorage.getItem(USER_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(USER_ID_KEY, id);
+  }
+  return id;
+}
 
 export function generateCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-export async function uploadAndSaveDrop(file: File): Promise<DroppedFile> {
-  const code = generateCode();
-  const storagePath = `${code}/${file.name}`;
-
-  // Upload file to storage
-  const { error: uploadError } = await supabase.storage
-    .from('drops')
-    .upload(storagePath, file);
-
-  if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
-
-  // Save drop metadata to database
-  const { data, error: dbError } = await supabase
-    .from('drops')
-    .insert({
-      code,
-      file_name: file.name,
-      file_size: file.size,
-      file_type: file.type || 'application/octet-stream',
-      storage_path: storagePath,
-    })
-    .select()
-    .single();
-
-  if (dbError) throw new Error(`Save failed: ${dbError.message}`);
-
+function mapDrop(data: any): DroppedFile {
   return {
     id: data.id,
     name: data.file_name,
@@ -60,7 +48,44 @@ export async function uploadAndSaveDrop(file: File): Promise<DroppedFile> {
     droppedAt: data.dropped_at,
     expiresAt: data.expires_at,
     storagePath: data.storage_path,
+    deleteAfterDownload: data.delete_after_download ?? false,
+    downloaded: data.downloaded ?? false,
+    viewCount: data.view_count ?? 0,
   };
+}
+
+export async function uploadAndSaveDrop(
+  file: File,
+  options?: { deleteAfterDownload?: boolean; expiresMinutes?: number }
+): Promise<DroppedFile> {
+  const code = generateCode();
+  const storagePath = `${code}/${file.name}`;
+  const userId = getOrCreateUserId();
+
+  const { error: uploadError } = await supabase.storage
+    .from('drops')
+    .upload(storagePath, file);
+
+  if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+
+  const { data, error: dbError } = await supabase
+    .from('drops')
+    .insert({
+      code,
+      file_name: file.name,
+      file_size: file.size,
+      file_type: file.type || 'application/octet-stream',
+      storage_path: storagePath,
+      user_id: userId,
+      delete_after_download: options?.deleteAfterDownload ?? false,
+      expires_minutes: options?.expiresMinutes ?? 5,
+    })
+    .select()
+    .single();
+
+  if (dbError) throw new Error(`Save failed: ${dbError.message}`);
+
+  return mapDrop(data);
 }
 
 export async function getDropByCode(code: string): Promise<DroppedFile | null> {
@@ -71,17 +96,7 @@ export async function getDropByCode(code: string): Promise<DroppedFile | null> {
     .single();
 
   if (error || !data) return null;
-
-  return {
-    id: data.id,
-    name: data.file_name,
-    size: Number(data.file_size),
-    type: data.file_type,
-    code: data.code,
-    droppedAt: data.dropped_at,
-    expiresAt: data.expires_at,
-    storagePath: data.storage_path,
-  };
+  return mapDrop(data);
 }
 
 export function getFileDownloadUrl(storagePath: string): string {
@@ -90,35 +105,48 @@ export function getFileDownloadUrl(storagePath: string): string {
 }
 
 export async function getRecentDrops(): Promise<DroppedFile[]> {
+  const userId = getOrCreateUserId();
   const { data, error } = await supabase
     .from('drops')
     .select('*')
+    .eq('user_id', userId)
     .order('dropped_at', { ascending: false })
     .limit(50);
 
   if (error || !data) return [];
-
-  return data.map(d => ({
-    id: d.id,
-    name: d.file_name,
-    size: Number(d.file_size),
-    type: d.file_type,
-    code: d.code,
-    droppedAt: d.dropped_at,
-    expiresAt: d.expires_at,
-    storagePath: d.storage_path,
-  }));
+  return data.map(mapDrop);
 }
 
 export function isExpired(file: DroppedFile): boolean {
   return new Date() > new Date(file.expiresAt);
 }
 
+export async function incrementViewCount(dropId: string, currentCount: number): Promise<void> {
+  await supabase
+    .from('drops')
+    .update({ view_count: currentCount + 1 })
+    .eq('id', dropId);
+}
+
+export async function markDownloaded(dropId: string): Promise<void> {
+  await supabase
+    .from('drops')
+    .update({ downloaded: true, downloaded_at: new Date().toISOString() })
+    .eq('id', dropId);
+}
+
+export async function deleteDropAfterDownload(drop: DroppedFile): Promise<void> {
+  // Delete file from storage
+  await supabase.storage.from('drops').remove([drop.storagePath]);
+  // Delete record from database
+  await supabase.from('drops').delete().eq('id', drop.id);
+}
+
 export async function saveFeedback(rating: number, message: string): Promise<void> {
   const { error } = await supabase
     .from('feedback')
     .insert({ rating, message: message || null });
-  if (error) throw error;
+  if (error) throw new Error(`Failed to save feedback: ${error.message}`);
 }
 
 export async function getAllFeedback(): Promise<FeedbackEntry[]> {

@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Check, Copy, AlertTriangle } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   uploadAndSaveDrop, formatFileSize, getFileTypeIcon, formatDropTime,
   type DroppedFile,
@@ -17,11 +19,11 @@ export default function Send() {
   const [result, setResult] = useState<DroppedFile | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [deleteAfterDownload, setDeleteAfterDownload] = useState(false);
+  const [expiresMinutes, setExpiresMinutes] = useState(5);
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-
-    // For now, upload first file (multi-file could be zipped later)
     const file = files[0];
 
     if (file.size > MAX_SIZE) {
@@ -33,7 +35,6 @@ export default function Send() {
     setUploading(true);
     setProgress(0);
 
-    // Simulate progress while uploading
     const interval = setInterval(() => {
       setProgress((p) => {
         if (p >= 90) { clearInterval(interval); return 90; }
@@ -42,7 +43,10 @@ export default function Send() {
     }, 300);
 
     try {
-      const dropped = await uploadAndSaveDrop(file);
+      const dropped = await uploadAndSaveDrop(file, {
+        deleteAfterDownload,
+        expiresMinutes,
+      });
       clearInterval(interval);
       setProgress(100);
       setResult(dropped);
@@ -52,7 +56,7 @@ export default function Send() {
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [deleteAfterDownload, expiresMinutes]);
 
   const shareUrl = result
     ? `${window.location.origin}/receive/${result.code}`
@@ -106,6 +110,35 @@ export default function Send() {
               </label>
             </TooltipHint>
 
+            {/* Options */}
+            <div className="mt-6 space-y-4 rounded-xl border border-border p-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="expiry" className="text-sm font-medium">Expires in</Label>
+                <select
+                  id="expiry"
+                  value={expiresMinutes}
+                  onChange={(e) => setExpiresMinutes(Number(e.target.value))}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value={5}>5 minutes</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={15}>15 minutes</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="delete-toggle" className="text-sm font-medium">Delete after download</Label>
+                  <p className="text-xs text-muted-foreground">File self-destructs after first download</p>
+                </div>
+                <Switch
+                  id="delete-toggle"
+                  checked={deleteAfterDownload}
+                  onCheckedChange={setDeleteAfterDownload}
+                />
+              </div>
+            </div>
+
             {uploading && (
               <div className="mt-6">
                 <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
@@ -152,6 +185,11 @@ export default function Send() {
               <p className="text-xs text-muted-foreground">
                 Dropped on {formatDropTime(result.droppedAt)}
               </p>
+              {result.deleteAfterDownload && (
+                <p className="text-xs text-destructive font-medium">
+                  ⚠️ This file will self-destruct after download
+                </p>
+              )}
             </div>
 
             <TooltipHint id="qr-share" text="Show this to your friend to scan">
@@ -175,7 +213,7 @@ export default function Send() {
 
             <div className="mt-4 flex items-center justify-center gap-2 text-sm text-warning font-medium">
               <AlertTriangle className="h-4 w-4" />
-              This link expires in 5 minutes
+              This link expires in {expiresMinutes} minutes
             </div>
 
             <Button onClick={reset} variant="outline" className="mt-6">
