@@ -1,10 +1,14 @@
 import { useParams, Link } from "react-router-dom";
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, AlertTriangle, Check, Loader2, Send } from "lucide-react";
+import { Download, AlertTriangle, Check, Loader2, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CountdownTimer from "@/components/CountdownTimer";
-import { getDropByCode, getFileDownloadUrl, isExpired, formatFileSize, getFileTypeIcon, formatDropTime, type DroppedFile } from "@/lib/storage";
+import {
+  getDropByCode, getFileDownloadUrl, isExpired, formatFileSize,
+  getFileTypeIcon, formatDropTime, incrementViewCount, markDownloaded,
+  deleteDropAfterDownload, type DroppedFile,
+} from "@/lib/storage";
 
 export default function Receive() {
   const { code } = useParams<{ code: string }>();
@@ -14,12 +18,17 @@ export default function Receive() {
   const [downloading, setDownloading] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
+  const [selfDestructed, setSelfDestructed] = useState(false);
 
   useEffect(() => {
     if (!code) return;
     getDropByCode(code).then(d => {
       setDrop(d);
-      if (d) setExpired(isExpired(d));
+      if (d) {
+        setExpired(isExpired(d));
+        // Increment view count
+        incrementViewCount(d.id, d.viewCount);
+      }
       setLoading(false);
     });
   }, [code]);
@@ -33,7 +42,7 @@ export default function Receive() {
       const url = getFileDownloadUrl(drop.storagePath);
       const response = await fetch(url);
       if (!response.ok) throw new Error("Download failed");
-      
+
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -43,7 +52,15 @@ export default function Receive() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
+
       setDownloaded(true);
+      await markDownloaded(drop.id);
+
+      // Self-destruct if enabled
+      if (drop.deleteAfterDownload) {
+        await deleteDropAfterDownload(drop);
+        setSelfDestructed(true);
+      }
     } catch {
       setDownloadError(true);
     } finally {
@@ -63,17 +80,15 @@ export default function Receive() {
   if (!drop) {
     return (
       <div className="container max-w-lg py-20 text-center">
-        <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-        <h1 className="text-xl font-bold">Drop Not Found</h1>
-        <p className="text-muted-foreground mt-2">This link may be invalid or has expired.</p>
+        <AlertTriangle className="h-12 w-12 mx-auto text-destructive mb-4" />
+        <h1 className="text-xl font-bold">This Drop Has Expired</h1>
+        <p className="text-muted-foreground mt-2">This link may be invalid or the file has expired.</p>
         <Button asChild className="mt-6">
           <Link to="/send">Send Your Own Files</Link>
         </Button>
       </div>
     );
   }
-
-  const isExp = expired;
 
   return (
     <div className="container max-w-lg py-12">
@@ -82,11 +97,19 @@ export default function Receive() {
         animate={{ opacity: 1, y: 0 }}
         className="text-center"
       >
-        {isExp ? (
+        {selfDestructed ? (
+          <>
+            <Trash2 className="h-12 w-12 mx-auto text-destructive mb-4" />
+            <h1 className="text-xl font-bold">File Self-Destructed</h1>
+            <p className="text-muted-foreground mt-2">
+              This file was set to delete after download. Your download should have started.
+            </p>
+          </>
+        ) : expired ? (
           <>
             <AlertTriangle className="h-12 w-12 mx-auto text-destructive mb-4" />
             <h1 className="text-xl font-bold">This Drop Has Expired</h1>
-            <p className="text-muted-foreground mt-2">Files are only available for 5 minutes.</p>
+            <p className="text-muted-foreground mt-2">Files are only available for a limited time.</p>
           </>
         ) : (
           <>
@@ -101,6 +124,11 @@ export default function Receive() {
               <p className="text-xs text-muted-foreground">
                 Dropped on {formatDropTime(drop.droppedAt)}
               </p>
+              {drop.deleteAfterDownload && (
+                <p className="text-xs text-destructive font-medium">
+                  ⚠️ This file will delete itself after you download it
+                </p>
+              )}
             </div>
 
             <div className="mt-6">
