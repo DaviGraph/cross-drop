@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Droplet, Copy, Check, ExternalLink, Loader2 } from "lucide-react";
+import { Droplet, Copy, Check, ExternalLink, Loader2, Eye, Download, Clock, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getRecentDrops, isExpired, formatFileSize, getFileTypeIcon, formatDropTime, type DroppedFile } from "@/lib/storage";
 import { useState, useEffect } from "react";
@@ -24,6 +24,17 @@ export default function Dashboard() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const getDownloadStatus = (drop: DroppedFile) => {
+    const exp = isExpired(drop);
+    if (drop.downloaded) {
+      return { icon: <Check className="h-3.5 w-3.5" />, text: "Downloaded ✅", className: "text-success" };
+    }
+    if (exp) {
+      return { icon: <XCircle className="h-3.5 w-3.5" />, text: "Expired — not downloaded", className: "text-destructive" };
+    }
+    return { icon: <Clock className="h-3.5 w-3.5" />, text: "Waiting for download", className: "text-warning" };
+  };
+
   if (loading) {
     return (
       <div className="container max-w-lg py-20 text-center">
@@ -44,7 +55,7 @@ export default function Dashboard() {
             <Droplet className="h-10 w-10 text-primary" />
           </div>
           <h1 className="text-2xl font-bold">No drops yet!</h1>
-          <p className="text-muted-foreground">Files you send will appear here for 5 minutes</p>
+          <p className="text-muted-foreground">Files you send will appear here</p>
           <Button asChild size="lg" variant="hero" className="mt-4">
             <Link to="/send">Send Your First File</Link>
           </Button>
@@ -62,6 +73,7 @@ export default function Dashboard() {
       <div className="space-y-3">
         {drops.map((drop, i) => {
           const exp = isExpired(drop);
+          const dlStatus = getDownloadStatus(drop);
           return (
             <motion.div
               key={drop.id}
@@ -90,6 +102,22 @@ export default function Dashboard() {
                   {exp ? "Expired" : "Active"}
                 </span>
               </div>
+
+              {/* Stats row */}
+              <div className="mt-2 flex items-center gap-4 text-xs">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <Eye className="h-3.5 w-3.5" />
+                  {drop.viewCount > 0 ? `${drop.viewCount} view${drop.viewCount > 1 ? 's' : ''}` : 'Not opened yet'}
+                </span>
+                <span className={`flex items-center gap-1 ${dlStatus.className}`}>
+                  {dlStatus.icon}
+                  {dlStatus.text}
+                </span>
+                {drop.deleteAfterDownload && (
+                  <span className="text-destructive">🗑️ Self-destruct</span>
+                )}
+              </div>
+
               {!exp && (
                 <div className="mt-3 flex items-center gap-2">
                   <input
