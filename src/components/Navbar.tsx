@@ -1,7 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { Droplet, Send, ScanLine, LayoutDashboard, MessageSquare, Moon, Sun } from "lucide-react";
+import { Droplet, Send, ScanLine, LayoutDashboard, MessageSquare, Moon, Sun, Volume2, VolumeX } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { isSoundEnabled, setSoundEnabled } from "@/lib/sounds";
 
 export default function Navbar() {
   const location = useLocation();
@@ -11,10 +12,17 @@ export default function Navbar() {
     }
     return false;
   });
+  const [sound, setSound] = useState(isSoundEnabled);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
   }, [dark]);
+
+  const toggleSound = () => {
+    const next = !sound;
+    setSound(next);
+    setSoundEnabled(next);
+  };
 
   const links = [
     { to: "/send", label: "Send", icon: Send },
@@ -49,6 +57,13 @@ export default function Navbar() {
               <span className="hidden md:inline">{label}</span>
             </Link>
           ))}
+          <button
+            onClick={toggleSound}
+            className="ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            title={sound ? "Mute sounds" : "Enable sounds"}
+          >
+            {sound ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </button>
           <button
             onClick={() => setDark(!dark)}
             className="ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"

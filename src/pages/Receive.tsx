@@ -1,14 +1,22 @@
 import { useParams, Link } from "react-router-dom";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
-import { Download, AlertTriangle, Check, Loader2, Send, Trash2 } from "lucide-react";
+import { Download, AlertTriangle, Check, Loader2, Send, Trash2, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CountdownTimer from "@/components/CountdownTimer";
+import FilePreview from "@/components/FilePreview";
+import { playArrivalChime, playDownloadConfirmation } from "@/lib/sounds";
 import {
   getDropByCode, getFileDownloadUrl, isExpired, formatFileSize,
   getFileTypeIcon, formatDropTime, incrementViewCount, markDownloaded,
   deleteDropAfterDownload, type DroppedFile,
 } from "@/lib/storage";
+
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+}
 
 export default function Receive() {
   const { code } = useParams<{ code: string }>();
@@ -19,6 +27,9 @@ export default function Receive() {
   const [downloaded, setDownloaded] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
   const [selfDestructed, setSelfDestructed] = useState(false);
+  const [dlProgress, setDlProgress] = useState(0);
+  const [dlSpeed, setDlSpeed] = useState<number | null>(null);
+  const arrivedRef = useRef(false);
 
   useEffect(() => {
     if (!code) return;
@@ -26,8 +37,11 @@ export default function Receive() {
       setDrop(d);
       if (d) {
         setExpired(isExpired(d));
-        // Increment view count
         incrementViewCount(d.id, d.viewCount);
+        if (!arrivedRef.current) {
+          arrivedRef.current = true;
+          playArrivalChime();
+        }
       }
       setLoading(false);
     });
@@ -37,26 +51,62 @@ export default function Receive() {
     if (!drop) return;
     setDownloading(true);
     setDownloadError(false);
+    setDlProgress(0);
+    setDlSpeed(null);
+
+    const startTime = Date.now();
 
     try {
       const url = getFileDownloadUrl(drop.storagePath);
       const response = await fetch(url);
       if (!response.ok) throw new Error("Download failed");
 
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = drop.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
+      const reader = response.body?.getReader();
+      const contentLength = Number(response.headers.get('content-length')) || drop.size;
+
+      if (reader) {
+        const chunks: Uint8Array[] = [];
+        let received = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          const pct = (received / contentLength) * 100;
+          setDlProgress(pct);
+          const elapsed = (Date.now() - startTime) / 1000;
+          if (elapsed > 0.3) {
+            setDlSpeed(received / elapsed);
+          }
+        }
+
+        const blob = new Blob(chunks);
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = drop.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      } else {
+        // Fallback if ReadableStream not available
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = drop.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      }
 
       setDownloaded(true);
+      playDownloadConfirmation();
       await markDownloaded(drop.id);
 
-      // Self-destruct if enabled
       if (drop.deleteAfterDownload) {
         await deleteDropAfterDownload(drop);
         setSelfDestructed(true);
@@ -65,6 +115,7 @@ export default function Receive() {
       setDownloadError(true);
     } finally {
       setDownloading(false);
+      setDlSpeed(null);
     }
   }, [drop]);
 
@@ -131,6 +182,9 @@ export default function Receive() {
               )}
             </div>
 
+            {/* File Preview */}
+            <FilePreview drop={drop} />
+
             <div className="mt-6">
               <p className="text-xs text-muted-foreground mb-1">Expires in</p>
               <CountdownTimer expiresAt={drop.expiresAt} onExpired={() => setExpired(true)} />
@@ -146,25 +200,37 @@ export default function Receive() {
                 <p className="text-sm text-destructive mb-2">Download failed. Please try again.</p>
                 <Button onClick={handleDownload}>Retry Download</Button>
               </div>
+            ) : downloading ? (
+              <div className="mt-6 space-y-3">
+                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full gradient-primary"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(dlProgress, 100)}%` }}
+                    transition={{ ease: "easeOut" }}
+                  />
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    Downloading... {Math.round(dlProgress)}%
+                  </p>
+                  {dlSpeed !== null && (
+                    <span className="flex items-center gap-1 text-xs text-primary font-medium">
+                      <Gauge className="h-3 w-3" />
+                      {formatSpeed(dlSpeed)}
+                    </span>
+                  )}
+                </div>
+              </div>
             ) : (
               <Button
                 size="xl"
                 variant="hero"
                 className="mt-6"
                 onClick={handleDownload}
-                disabled={downloading}
               >
-                {downloading ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Preparing...
-                  </>
-                ) : (
-                  <>
-                    <Download className="h-5 w-5" />
-                    Download File
-                  </>
-                )}
+                <Download className="h-5 w-5" />
+                Download File
               </Button>
             )}
           </>
