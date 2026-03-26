@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, Check, Copy, AlertTriangle } from "lucide-react";
+import { Upload, Check, Copy, AlertTriangle, Gauge } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -9,13 +9,23 @@ import {
   uploadAndSaveDrop, formatFileSize, getFileTypeIcon, formatDropTime,
   type DroppedFile,
 } from "@/lib/storage";
+import { supabase } from "@/integrations/supabase/client";
+import { generateCode } from "@/lib/storage";
+import { getOrCreateUserId } from "@/lib/storage";
 import TooltipHint from "@/components/TooltipHint";
 
 const MAX_SIZE = 200 * 1024 * 1024;
 
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
 export default function Send() {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [speed, setSpeed] = useState<number | null>(null);
   const [result, setResult] = useState<DroppedFile | null>(null);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -34,27 +44,105 @@ export default function Send() {
     setError("");
     setUploading(true);
     setProgress(0);
+    setSpeed(null);
 
-    const interval = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 90) { clearInterval(interval); return 90; }
-        return p + Math.random() * 12;
-      });
-    }, 300);
+    const startTime = Date.now();
+    const code = generateCode();
+    const storagePath = `${code}/${file.name}`;
+    const userId = getOrCreateUserId();
 
+    // Use XMLHttpRequest for real progress tracking
     try {
-      const dropped = await uploadAndSaveDrop(file, {
-        deleteAfterDownload,
-        expiresMinutes,
+      const uploadedBytes = await new Promise<number>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const { data: { publicUrl } } = supabase.storage.from('drops').getPublicUrl('');
+        // Build the upload URL manually
+        const supabaseUrl = publicUrl.replace('/storage/v1/object/public/drops/', '');
+        const uploadUrl = `${supabaseUrl}/storage/v1/object/drops/${storagePath}`;
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const pct = (e.loaded / e.total) * 100;
+            setProgress(pct);
+            const elapsed = (Date.now() - startTime) / 1000;
+            if (elapsed > 0.3) {
+              setSpeed(e.loaded / elapsed);
+            }
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(file.size);
+          } else {
+            // Fallback to supabase SDK
+            reject(new Error('XHR failed'));
+          }
+        });
+
+        xhr.addEventListener('error', () => reject(new Error('XHR failed')));
+
+        xhr.open('POST', uploadUrl);
+        xhr.setRequestHeader('Authorization', `Bearer ${(supabase as any).supabaseKey || ''}`);
+        xhr.setRequestHeader('apikey', (supabase as any).supabaseKey || '');
+        xhr.send(file);
       });
-      clearInterval(interval);
+
+      // Save metadata
+      const { data, error: dbError } = await supabase
+        .from('drops')
+        .insert({
+          code,
+          file_name: file.name,
+          file_size: file.size,
+          file_type: file.type || 'application/octet-stream',
+          storage_path: storagePath,
+          user_id: userId,
+          delete_after_download: deleteAfterDownload,
+          expires_minutes: expiresMinutes,
+        })
+        .select()
+        .single();
+
+      if (dbError) throw new Error(`Save failed: ${dbError.message}`);
+
       setProgress(100);
-      setResult(dropped);
-    } catch (err: any) {
-      clearInterval(interval);
-      setError(err.message || "Upload failed. Please try again.");
+      setResult({
+        id: data.id,
+        name: data.file_name,
+        size: Number(data.file_size),
+        type: data.file_type,
+        code: data.code,
+        droppedAt: data.dropped_at,
+        expiresAt: data.expires_at,
+        storagePath: data.storage_path,
+        deleteAfterDownload: data.delete_after_download,
+        downloaded: data.downloaded,
+        viewCount: data.view_count,
+      });
+    } catch {
+      // Fallback: use the original SDK method (no real progress)
+      try {
+        const interval = setInterval(() => {
+          setProgress((p) => {
+            if (p >= 90) { clearInterval(interval); return 90; }
+            return p + Math.random() * 12;
+          });
+        }, 300);
+
+        const dropped = await uploadAndSaveDrop(file, {
+          deleteAfterDownload,
+          expiresMinutes,
+        });
+        clearInterval(interval);
+        setProgress(100);
+        setResult(dropped);
+      } catch (err: any) {
+        setError(err.message || "Upload failed. Please try again.");
+      }
     } finally {
       setUploading(false);
+      setSpeed(null);
     }
   }, [deleteAfterDownload, expiresMinutes]);
 
@@ -149,9 +237,17 @@ export default function Send() {
                     transition={{ ease: "easeOut" }}
                   />
                 </div>
-                <p className="text-sm text-muted-foreground text-center mt-2">
-                  {Math.round(progress)}%
-                </p>
+                <div className="flex items-center justify-center gap-2 mt-2">
+                  <p className="text-sm text-muted-foreground">
+                    {Math.round(progress)}%
+                  </p>
+                  {speed !== null && (
+                    <span className="flex items-center gap-1 text-xs text-primary font-medium">
+                      <Gauge className="h-3 w-3" />
+                      {formatSpeed(speed)}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 
