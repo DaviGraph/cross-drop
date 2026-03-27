@@ -325,9 +325,19 @@ export default function Send() {
               This link expires in {expiresMinutes} minutes
             </div>
 
-            <Button onClick={reset} variant="outline" className="mt-6">
-              Send Another File
-            </Button>
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <Button onClick={reset} variant="outline">
+                Send Another File
+              </Button>
+              <Button onClick={handleDeleteDrop} variant="destructive" disabled={deleting}>
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {deleting ? "Deleting..." : "Delete Drop"}
+              </Button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
