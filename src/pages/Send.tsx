@@ -1,13 +1,13 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, Check, Copy, AlertTriangle, Gauge } from "lucide-react";
+import { Upload, Check, Copy, AlertTriangle, Gauge, Trash2, Loader2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
   uploadAndSaveDrop, formatFileSize, getFileTypeIcon, formatDropTime,
-  type DroppedFile,
+  deleteDropAfterDownload, type DroppedFile,
 } from "@/lib/storage";
 import { supabase } from "@/integrations/supabase/client";
 import { generateCode } from "@/lib/storage";
@@ -31,6 +31,7 @@ export default function Send() {
   const [copied, setCopied] = useState(false);
   const [deleteAfterDownload, setDeleteAfterDownload] = useState(false);
   const [expiresMinutes, setExpiresMinutes] = useState(5);
+  const [deleting, setDeleting] = useState(false);
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -160,6 +161,18 @@ export default function Send() {
     setResult(null);
     setProgress(0);
     setError("");
+    setDeleting(false);
+  };
+
+  const handleDeleteDrop = async () => {
+    if (!result) return;
+    setDeleting(true);
+    try {
+      await deleteDropAfterDownload(result);
+      reset();
+    } catch {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -312,9 +325,19 @@ export default function Send() {
               This link expires in {expiresMinutes} minutes
             </div>
 
-            <Button onClick={reset} variant="outline" className="mt-6">
-              Send Another File
-            </Button>
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <Button onClick={reset} variant="outline">
+                Send Another File
+              </Button>
+              <Button onClick={handleDeleteDrop} variant="destructive" disabled={deleting}>
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {deleting ? "Deleting..." : "Delete Drop"}
+              </Button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
