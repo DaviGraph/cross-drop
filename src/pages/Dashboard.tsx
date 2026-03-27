@@ -1,8 +1,8 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Droplet, Copy, Check, ExternalLink, Loader2, Eye, Download, Clock, XCircle } from "lucide-react";
+import { Droplet, Copy, Check, ExternalLink, Loader2, Eye, Clock, XCircle, Trash2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getRecentDrops, isExpired, formatFileSize, getFileTypeIcon, formatDropTime, type DroppedFile } from "@/lib/storage";
+import { getRecentDrops, isExpired, formatFileSize, getFileTypeIcon, formatDropTime, deleteDropAfterDownload, type DroppedFile } from "@/lib/storage";
 import { useState, useEffect } from "react";
 import TooltipHint from "@/components/TooltipHint";
 
@@ -10,6 +10,8 @@ export default function Dashboard() {
   const [drops, setDrops] = useState<DroppedFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     getRecentDrops().then(d => {
@@ -22,6 +24,23 @@ export default function Dashboard() {
     navigator.clipboard.writeText(`${window.location.origin}/receive/${code}`);
     setCopiedId(code);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleDelete = async (drop: DroppedFile) => {
+    setDeletingId(drop.id);
+    try {
+      await deleteDropAfterDownload(drop);
+      setDrops(prev => prev.filter(d => d.id !== drop.id));
+    } catch {
+      // silently fail
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleResend = (drop: DroppedFile) => {
+    // Navigate to send page with the file name as a hint
+    navigate("/send", { state: { resendFileName: drop.name } });
   };
 
   const getDownloadStatus = (drop: DroppedFile) => {
@@ -118,6 +137,7 @@ export default function Dashboard() {
                 )}
               </div>
 
+              {/* Active drop: link + copy + actions */}
               {!exp && (
                 <div className="mt-3 flex items-center gap-2">
                   <input
@@ -128,6 +148,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => copyLink(drop.code)}
                     className="text-muted-foreground hover:text-foreground transition-colors"
+                    title="Copy link"
                   >
                     {copiedId === drop.code ? (
                       <Check className="h-4 w-4 text-success" />
@@ -138,9 +159,51 @@ export default function Dashboard() {
                   <Link
                     to={`/receive/${drop.code}`}
                     className="text-muted-foreground hover:text-foreground transition-colors"
+                    title="Open receive page"
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Link>
+                  <button
+                    onClick={() => handleDelete(drop)}
+                    disabled={deletingId === drop.id}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    title="Delete this drop"
+                  >
+                    {deletingId === drop.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Expired drop: resend + delete */}
+              {exp && (
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleResend(drop)}
+                    className="text-xs"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                    Resend
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDelete(drop)}
+                    disabled={deletingId === drop.id}
+                    className="text-xs text-destructive hover:text-destructive"
+                  >
+                    {deletingId === drop.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    Delete
+                  </Button>
                 </div>
               )}
             </motion.div>
