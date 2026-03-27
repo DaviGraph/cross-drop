@@ -1,13 +1,13 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, Check, Copy, AlertTriangle, Gauge } from "lucide-react";
+import { Upload, Check, Copy, AlertTriangle, Gauge, Trash2, Loader2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
   uploadAndSaveDrop, formatFileSize, getFileTypeIcon, formatDropTime,
-  type DroppedFile,
+  deleteDropAfterDownload, type DroppedFile,
 } from "@/lib/storage";
 import { supabase } from "@/integrations/supabase/client";
 import { generateCode } from "@/lib/storage";
