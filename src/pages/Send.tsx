@@ -31,6 +31,7 @@ export default function Send() {
   const [copied, setCopied] = useState(false);
   const [deleteAfterDownload, setDeleteAfterDownload] = useState(false);
   const [expiresMinutes, setExpiresMinutes] = useState(5);
+  const [deleting, setDeleting] = useState(false);
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -160,6 +161,18 @@ export default function Send() {
     setResult(null);
     setProgress(0);
     setError("");
+    setDeleting(false);
+  };
+
+  const handleDeleteDrop = async () => {
+    if (!result) return;
+    setDeleting(true);
+    try {
+      await deleteDropAfterDownload(result);
+      reset();
+    } catch {
+      setDeleting(false);
+    }
   };
 
   return (
