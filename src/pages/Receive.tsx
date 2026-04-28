@@ -229,6 +229,12 @@ export default function Receive() {
           <p className="text-muted-foreground">
             Stay on this page — your file will appear automatically
           </p>
+          <div className="mt-4 inline-flex flex-col items-center gap-1 rounded-lg border border-border bg-card px-4 py-2">
+            <span className="text-xs text-muted-foreground">Time remaining</span>
+            <span className="font-mono text-lg font-bold tabular-nums text-primary">
+              {Math.floor(waitRemaining / 60)}:{(waitRemaining % 60).toString().padStart(2, "0")}
+            </span>
+          </div>
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mt-6">
             <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
             Checking every few seconds
