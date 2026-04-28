@@ -374,9 +374,9 @@ export default function QA() {
             <span className="text-muted-foreground">{summary.total} total</span>
           </div>
           <div className="flex gap-2">
-            <Button onClick={runAll} disabled={runningAll} variant="hero">
+            <Button onClick={runAll} disabled={runningAll} variant="hero" size="lg">
               {runningAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              Run all
+              {runningAll ? "Running Full QA..." : "Run Full QA"}
             </Button>
             <Button onClick={reset} variant="outline" disabled={runningAll}>
               <RotateCcw className="h-4 w-4" />
