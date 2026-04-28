@@ -35,6 +35,7 @@ export default function Receive() {
   const [dlProgress, setDlProgress] = useState(0);
   const [dlSpeed, setDlSpeed] = useState<number | null>(null);
   const [autoDownloadTriggered, setAutoDownloadTriggered] = useState(false);
+  const [waitRemaining, setWaitRemaining] = useState(POLL_TIMEOUT / 1000);
   const arrivedRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
