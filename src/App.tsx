@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Scan from "./pages/Scan";
 import Feedback from "./pages/Feedback";
 import AdminFeedback from "./pages/AdminFeedback";
+import QA from "./pages/QA";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/scan" element={<Scan />} />
           <Route path="/feedback" element={<Feedback />} />
           <Route path="/admin/feedback" element={<AdminFeedback />} />
+          <Route path="/qa" element={<QA />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
