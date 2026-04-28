@@ -107,6 +107,17 @@ export default function Receive() {
     return () => stopPolling();
   }, [code, stopPolling]);
 
+  // Tick down the visible "time remaining" while waiting
+  useEffect(() => {
+    if (!waiting) return;
+    const tick = setInterval(() => {
+      const elapsed = Date.now() - pollStartRef.current;
+      const remaining = Math.max(0, Math.floor((POLL_TIMEOUT - elapsed) / 1000));
+      setWaitRemaining(remaining);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [waiting]);
+
   // Auto-download when drop arrives
   const handleDownload = useCallback(async () => {
     if (!drop) return;
