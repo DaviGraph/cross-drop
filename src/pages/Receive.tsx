@@ -35,6 +35,7 @@ export default function Receive() {
   const [dlProgress, setDlProgress] = useState(0);
   const [dlSpeed, setDlSpeed] = useState<number | null>(null);
   const [autoDownloadTriggered, setAutoDownloadTriggered] = useState(false);
+  const [waitRemaining, setWaitRemaining] = useState(POLL_TIMEOUT / 1000);
   const arrivedRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
@@ -105,6 +106,17 @@ export default function Receive() {
 
     return () => stopPolling();
   }, [code, stopPolling]);
+
+  // Tick down the visible "time remaining" while waiting
+  useEffect(() => {
+    if (!waiting) return;
+    const tick = setInterval(() => {
+      const elapsed = Date.now() - pollStartRef.current;
+      const remaining = Math.max(0, Math.floor((POLL_TIMEOUT - elapsed) / 1000));
+      setWaitRemaining(remaining);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [waiting]);
 
   // Auto-download when drop arrives
   const handleDownload = useCallback(async () => {
@@ -217,6 +229,12 @@ export default function Receive() {
           <p className="text-muted-foreground">
             Stay on this page — your file will appear automatically
           </p>
+          <div className="mt-4 inline-flex flex-col items-center gap-1 rounded-lg border border-border bg-card px-4 py-2">
+            <span className="text-xs text-muted-foreground">Time remaining</span>
+            <span className="font-mono text-lg font-bold tabular-nums text-primary">
+              {Math.floor(waitRemaining / 60)}:{(waitRemaining % 60).toString().padStart(2, "0")}
+            </span>
+          </div>
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mt-6">
             <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
             Checking every few seconds
