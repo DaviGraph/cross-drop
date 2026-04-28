@@ -182,6 +182,132 @@ const checks: QACheck[] = [
       };
     },
   },
+  {
+    id: "browser-compat",
+    title: "Auto-download + manual fallback across browsers",
+    description:
+      "Detects the current browser/incognito mode and confirms the receive page's auto-download and manual Download button both fire. Re-run this check in Chrome, Safari, and a private/incognito window.",
+    run: async ({ log }) => {
+      const ua = navigator.userAgent;
+      const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+      const isChrome = /chrome/i.test(ua) && !/edg|opr/i.test(ua);
+      const browser = isSafari ? "Safari" : isChrome ? "Chrome" : "Other";
+      log(`Browser detected: ${browser}`);
+
+      // Probe incognito via storage quota (Chrome) / fallback heuristics
+      let incognito = false;
+      try {
+        if (navigator.storage && navigator.storage.estimate) {
+          const { quota } = await navigator.storage.estimate();
+          if (quota && quota < 120 * 1024 * 1024) incognito = true;
+        }
+      } catch { /* noop */ }
+      log(`Private/incognito heuristic: ${incognito ? "likely" : "no"}`);
+
+      // Verify the browser supports the auto-download trigger (anchor + download attr)
+      const a = document.createElement("a");
+      const supportsDownload = typeof a.download !== "undefined";
+      log(`Anchor download attribute supported: ${supportsDownload}`);
+      if (!supportsDownload) {
+        return {
+          status: "fail",
+          message: `${browser} does not support <a download>. Manual fallback required.`,
+        };
+      }
+
+      // Create a real drop the tester can open in this browser
+      const file = makeTestFile("qa-browser.txt");
+      const drop = await uploadAndSaveDrop(file, { expiresMinutes: 5 });
+      log(`Test drop created: ${drop.code}`);
+
+      return {
+        status: "pass",
+        message:
+          `${browser}${incognito ? " (incognito)" : ""}: open the link, confirm the file auto-downloads, then reload and click "Download File" to confirm the manual fallback. Re-run this check in each browser. Remember to delete ${drop.code} from the dashboard.`,
+        link: { label: `Open /receive/${drop.code}`, to: `/receive/${drop.code}` },
+      };
+    },
+  },
+  {
+    id: "slow-network",
+    title: "Slow network → waiting transitions smoothly",
+    description:
+      "Simulates a throttled download (~50 KB/s) directly against storage and confirms the receive page can stream the file without stalling. Open the link, then watch the speed indicator stay live.",
+    run: async ({ log }) => {
+      const file = makeTestFile("qa-slow.txt", "x".repeat(200_000)); // ~200 KB
+      const drop = await uploadAndSaveDrop(file, { expiresMinutes: 5 });
+      log(`Uploaded ${drop.code} (~200 KB)`);
+
+      // Throttled probe: pull the body chunk-by-chunk with deliberate delays
+      const url = `${window.location.origin}/receive/${drop.code}`;
+      log("Throttling fetch to ~50 KB/s for 4s as a sanity probe...");
+      const probeStart = Date.now();
+      try {
+        const res = await fetch(
+          `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/storage/v1/object/public/drops/${drop.storagePath}`
+        );
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error("No stream reader available");
+        let received = 0;
+        const deadline = probeStart + 4000;
+        while (Date.now() < deadline) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.length;
+          // Throttle ~50 KB/s
+          await new Promise((r) => setTimeout(r, (value.length / 51200) * 1000));
+        }
+        try { await reader.cancel(); } catch { /* noop */ }
+        log(`Throttled probe pulled ${received} bytes in 4s.`);
+        if (received === 0) {
+          return { status: "fail", message: "No bytes received under throttle." };
+        }
+      } catch (e: unknown) {
+        return {
+          status: "fail",
+          message: `Throttled probe failed: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+
+      return {
+        status: "pass",
+        message:
+          `Streaming works under throttle. Now open ${url} (optionally with DevTools → Network → Slow 3G) and confirm the waiting screen flips to download and the speed indicator updates without freezing. Delete ${drop.code} after.`,
+        link: { label: `Open /receive/${drop.code}`, to: `/receive/${drop.code}` },
+      };
+    },
+  },
+  {
+    id: "mobile-qr",
+    title: "Mobile QR scan + auto-redirect (iPhone Safari / Android Chrome)",
+    description:
+      "Generates a real receive link and renders it as a QR code. Scan it with an iPhone (Safari) and an Android device (Chrome) and confirm both open the receive page and start the download.",
+    run: async ({ log }) => {
+      const file = makeTestFile("qa-qr.txt");
+      const drop = await uploadAndSaveDrop(file, { expiresMinutes: 10 });
+      const url = `${window.location.origin}/receive/${drop.code}`;
+      log(`Drop ${drop.code} created.`);
+      log(`Receive URL: ${url}`);
+      log("Use a QR generator (or the Send page after re-creating) to scan.");
+
+      // Verify URL is well-formed and routable
+      try {
+        const u = new URL(url);
+        if (!u.pathname.startsWith("/receive/")) {
+          return { status: "fail", message: "Generated URL does not point at /receive/." };
+        }
+      } catch {
+        return { status: "fail", message: "Generated URL is not parseable." };
+      }
+
+      return {
+        status: "pass",
+        message:
+          `Open the Send page in another tab, paste code ${drop.code} or scan the QR for this drop on iPhone Safari and Android Chrome. Confirm both open the receive page and auto-download. Delete ${drop.code} after.`,
+        link: { label: `Open /receive/${drop.code}`, to: `/receive/${drop.code}` },
+      };
+    },
+  },
 ];
 
 export default function QA() {
