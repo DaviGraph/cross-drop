@@ -78,6 +78,12 @@ export default function Dashboard() {
           <Button asChild size="lg" variant="hero" className="mt-4">
             <Link to="/send">Send Your First File</Link>
           </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/qa">
+              <ClipboardList className="h-4 w-4" />
+              Run QA Checklist
+            </Link>
+          </Button>
         </motion.div>
       </div>
     );
