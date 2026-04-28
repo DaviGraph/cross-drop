@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Droplet, Copy, Check, ExternalLink, Loader2, Eye, Clock, XCircle, Trash2, RefreshCw } from "lucide-react";
+import { Droplet, Copy, Check, ExternalLink, Loader2, Eye, Clock, XCircle, Trash2, RefreshCw, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getRecentDrops, isExpired, formatFileSize, getFileTypeIcon, formatDropTime, deleteDropAfterDownload, type DroppedFile } from "@/lib/storage";
 import { useState, useEffect } from "react";
@@ -85,9 +85,17 @@ export default function Dashboard() {
 
   return (
     <div className="container max-w-2xl py-12">
-      <TooltipHint id="dashboard-hint" text="Your sent files appear here">
-        <h1 className="text-2xl font-bold mb-6">Your Drops</h1>
-      </TooltipHint>
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
+        <TooltipHint id="dashboard-hint" text="Your sent files appear here">
+          <h1 className="text-2xl font-bold">Your Drops</h1>
+        </TooltipHint>
+        <Button asChild variant="hero" size="sm">
+          <Link to="/qa">
+            <ClipboardList className="h-4 w-4" />
+            Run QA Checklist
+          </Link>
+        </Button>
+      </div>
 
       <div className="space-y-3">
         {drops.map((drop, i) => {
